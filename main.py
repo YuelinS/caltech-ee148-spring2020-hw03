@@ -7,13 +7,15 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data.sampler import SubsetRandomSampler
-
+import numpy as np
 import os
 
 '''
 This code is adapted from two sources:
 (i) The official PyTorch MNIST example (https://github.com/pytorch/examples/blob/master/mnist/main.py)
 (ii) Starter code from Yisong Yue's CS 155 Course (http://www.yisongyue.com/courses/cs155/2020_winter/)
+Run with:
+python main.py --batch-size 32 --epochs 1 --log-interval 100 --model-number 1
 '''
 
 class fcNet(nn.Module):
@@ -103,33 +105,57 @@ def train(args, model, device, train_loader, optimizer, epoch):
         optimizer.step()                    # Perform a single optimization step
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
+                epoch, batch_idx * len(data), len(train_loader.sampler),
                 100. * batch_idx / len(train_loader), loss.item()))
 
 
-def test(model, device, test_loader):
+def test(model, device, train_eval_loader, test_loader):
     model.eval()    # Set the model to inference mode
+    
+    train_loss = 0
+    train_correct = 0
+    train_num = 0 
+    with torch.no_grad():  
+        for data, target in train_eval_loader:
+                data, target = data.to(device), target.to(device)
+                output = model(data)
+                train_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+                pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
+                train_correct += pred.eq(target.view_as(pred)).sum().item()
+                train_num += len(data)
+    train_loss /= train_num
+
+    print('\nFull Training Epoch: Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)'.format(
+        train_loss, train_correct, train_num,
+        100. * train_correct / train_num))
+        
+        
     test_loss = 0
-    correct = 0
+    test_correct = 0
+    test_num = 0   
     with torch.no_grad():   # For the inference step, gradient is not computed
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
             test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
             pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
-            correct += pred.eq(target.view_as(pred)).sum().item()
+            test_correct += pred.eq(target.view_as(pred)).sum().item()
+            test_num += len(data)
 
-    test_loss /= len(test_loader.dataset)
+    test_loss /= test_num
 
-    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-        test_loss, correct, len(test_loader.dataset),
-        100. * correct / len(test_loader.dataset)))
-
+    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)\n'.format(
+        test_loss, test_correct, test_num,
+        100. * test_correct / test_num))
+    
+    
 
 def main():
     # Training settings
     # Use the command line to modify the default settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
+    parser.add_argument('--model-number', type=int, default=1, metavar='N',
+                        help='select from fcNet, ConvNet, Net (default: 1)')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
@@ -165,15 +191,18 @@ def main():
 
     kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
 
+    models = [fcNet, ConvNet, Net]
+    model_sel = args.model_number
+    
     # Evaluate on the official test set
     if args.evaluate:
         assert os.path.exists(args.load_model)
 
         # Set the test model
-        model = fcNet().to(device)
+        model = models[model_sel].to(device)
         model.load_state_dict(torch.load(args.load_model))
 
-        test_dataset = datasets.MNIST('../data', train=False,
+        test_dataset = datasets.MNIST('../MNIST', train=False,
                     transform=transforms.Compose([
                         transforms.ToTensor(),
                         transforms.Normalize((0.1307,), (0.3081,))
@@ -187,7 +216,7 @@ def main():
         return
 
     # Pytorch has default MNIST dataloader which loads data at each iteration
-    train_dataset = datasets.MNIST('../data', train=True, download=True,
+    train_dataset = datasets.MNIST('../MNIST', train=True, download=True,
                 transform=transforms.Compose([       # Data preprocessing
                     transforms.ToTensor(),           # Add data augmentation here
                     transforms.Normalize((0.1307,), (0.3081,))
@@ -197,20 +226,43 @@ def main():
     # training by using SubsetRandomSampler. Right now the train and validation
     # sets are built from the same indices - this is bad! Change it so that
     # the training and validation sets are disjoint and have the correct relative sizes.
-    subset_indices_train = range(len(train_dataset))
-    subset_indices_valid = range(len(train_dataset))
+       
+    val_split = .15
+    
+    targets = train_dataset.targets.data.numpy()
+    target_indices = [(targets == k).nonzero() for k in range(10)]
+    
+    subset_indices_train, subset_indices_valid = [],[]
+    
+    for k in range(10):
+        target_indice = target_indices[k][0]               
+        
+        split = int(np.floor(val_split * len(target_indice)))
+        
+        np.random.seed(42)
+        np.random.shuffle(target_indice)
+        
+        subset_indices_train = np.append(subset_indices_train,target_indice[split:])
+        subset_indices_valid = np.append(subset_indices_valid,target_indice[:split])
 
+    # subset_indices_train = range(len(train_dataset))
+    # subset_indices_valid = range(len(train_dataset))
+    
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size,
-        sampler=SubsetRandomSampler(subset_indices_train)
+        sampler=SubsetRandomSampler(subset_indices_train.astype(int).tolist())
+    )
+    train_eval_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=args.test_batch_size,
+        sampler=SubsetRandomSampler(subset_indices_train.astype(int).tolist())
     )
     val_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size,
-        sampler=SubsetRandomSampler(subset_indices_valid)
+        train_dataset, batch_size=args.test_batch_size,
+        sampler=SubsetRandomSampler(subset_indices_valid.astype(int).tolist())
     )
 
-    # Load your model [fcNet, ConvNet, Net]
-    model = fcNet().to(device)
+    # Load your model 
+    model = models[model_sel]().to(device)
 
     # Try different optimzers here [Adam, SGD, RMSprop]
     optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
@@ -221,7 +273,7 @@ def main():
     # Training loop
     for epoch in range(1, args.epochs + 1):
         train(args, model, device, train_loader, optimizer, epoch)
-        test(model, device, val_loader)
+        test(model, device, train_eval_loader, val_loader)
         scheduler.step()    # learning rate scheduler
 
         # You may optionally save your model at each epoch here
