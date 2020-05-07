@@ -83,22 +83,37 @@ class ConvNet(nn.Module):
 class Net(nn.Module):
     '''
     Build the best MNIST classifier.
-    '''
+    '''   
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=8, kernel_size=(3,3), stride=1)
-        self.conv2 = nn.Conv2d(8, 8, 3, 1)
+        
+        out1, out2, out3 = 8, 8, 16        
+        lin_in = self.calculate_size(28,3)
+        
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=out1, kernel_size=(2,2), stride=2)
+        self.conv2 = nn.Conv2d(out1, out2, 4, 1)
+        self.conv3 = nn.Conv2d(out2, out3, 4, 1)
         self.dropout1 = nn.Dropout2d(0.5)
         self.dropout2 = nn.Dropout2d(0.5)
-        self.fc1 = nn.Linear(200, 64)
+        self.dropout3 = nn.Dropout2d(0.5)
+        self.fc1 = nn.Linear(out3*lin_in**2, 64)
         self.fc2 = nn.Linear(64, 10)
-        self.batchnorm1 = nn.BatchNorm2d(8)
-        self.batchnorm2 = nn.BatchNorm2d(8)
-
+        self.batchnorm1 = nn.BatchNorm2d(out1)
+        self.batchnorm2 = nn.BatchNorm2d(out2)
+        self.batchnorm3 = nn.BatchNorm2d(out3)
+        
+        
+    def calculate_size(self, size_in, n_layer):
+        for k in range(n_layer):
+            size_out = np.floor((size_in - 2) / 2)
+            size_in = size_out
+        return int(size_out)
+    
+    
     def forward(self, x):
         x = self.conv1(x)
         x = F.relu(x)
-        x = F.max_pool2d(x, 2)
+        # x = F.max_pool2d(x, 2)
         x = self.dropout1(x)
         x = self.batchnorm1(x)
 
@@ -106,8 +121,14 @@ class Net(nn.Module):
         x = F.relu(x)
         x = F.max_pool2d(x, 2)
         x = self.dropout2(x)
-        x = self.batchnorm1(x)
+        x = self.batchnorm2(x)
 
+        x = self.conv3(x)
+        x = F.relu(x)
+        x = F.max_pool2d(x, 2)
+        # x = self.dropout3(x)
+        x = self.batchnorm3(x)
+        
         x = torch.flatten(x, 1)
         x = self.fc1(x)
         x = F.relu(x)
@@ -185,13 +206,13 @@ def main():
     # Training settings
     # Use the command line to modify the default settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--model-number', type=int, default=1, metavar='N',
+    parser.add_argument('--model-number', type=int, default=2, metavar='N',
                         help='select from fcNet, ConvNet, Net (default: 1)')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=1, metavar='N',
+    parser.add_argument('--epochs', type=int, default=2, metavar='N',
                         help='number of epochs to train (default: 14)')
     parser.add_argument('--lr', type=float, default=1.0, metavar='LR',
                         help='learning rate (default: 1.0)')
@@ -312,11 +333,7 @@ def main():
     # Training loop
     for epoch in range(1, args.epochs + 1):
         train(args, model, device, train_loader, optimizer, epoch)
-        
-        if epoch == args.epochs:
-            train_loss, test_loss = test(model, device, val_loader, train_eval_loader)
-        else:
-            train_loss, test_loss = test(model, device, val_loader)
+        train_loss, test_loss = test(model, device, val_loader, train_eval_loader)
             
         scheduler.step()    # learning rate scheduler
 
@@ -326,8 +343,8 @@ def main():
         # You may optionally save your model at each epoch here
 
     if args.save_model:        
-        torch.save(model.state_dict(), "mnist_model" + model_sel + version + ".pt")      
-        np.save('../results/losses_across_epoche' + model_sel + version + '.npy',[train_losses,test_losses]);
+        torch.save(model.state_dict(), "mnist_model" + str(model_sel) + version + ".pt")      
+        np.save('../results/losses_across_epoche' + str(model_sel) + version + '.npy',[train_losses,test_losses]);
 
 
 if __name__ == '__main__':
