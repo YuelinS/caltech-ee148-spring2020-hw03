@@ -16,6 +16,7 @@ This code is adapted from two sources:
 (ii) Starter code from Yisong Yue's CS 155 Course (http://www.yisongyue.com/courses/cs155/2020_winter/)
 Run with:
 python main.py --batch-size 32 --epochs 1 --log-interval 100 --model-number 1
+python main.py --evaluate --load-model mnist_model.pt
 '''
 
 class fcNet(nn.Module):
@@ -85,9 +86,35 @@ class Net(nn.Module):
     '''
     def __init__(self):
         super(Net, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=8, kernel_size=(3,3), stride=1)
+        self.conv2 = nn.Conv2d(8, 8, 3, 1)
+        self.dropout1 = nn.Dropout2d(0.5)
+        self.dropout2 = nn.Dropout2d(0.5)
+        self.fc1 = nn.Linear(200, 64)
+        self.fc2 = nn.Linear(64, 10)
+        self.batchnorm1 = nn.BatchNorm2d(8)
+        self.batchnorm2 = nn.BatchNorm2d(8)
 
     def forward(self, x):
-        return x
+        x = self.conv1(x)
+        x = F.relu(x)
+        x = F.max_pool2d(x, 2)
+        x = self.dropout1(x)
+        x = self.batchnorm1(x)
+
+        x = self.conv2(x)
+        x = F.relu(x)
+        x = F.max_pool2d(x, 2)
+        x = self.dropout2(x)
+        x = self.batchnorm1(x)
+
+        x = torch.flatten(x, 1)
+        x = self.fc1(x)
+        x = F.relu(x)
+        x = self.fc2(x)
+
+        output = F.log_softmax(x, dim=1)
+        return output
 
 
 def train(args, model, device, train_loader, optimizer, epoch):
@@ -109,26 +136,8 @@ def train(args, model, device, train_loader, optimizer, epoch):
                 100. * batch_idx / len(train_loader), loss.item()))
 
 
-def test(model, device, train_eval_loader, test_loader):
+def test(model, device, test_loader, *args):
     model.eval()    # Set the model to inference mode
-    
-    train_loss = 0
-    train_correct = 0
-    train_num = 0 
-    with torch.no_grad():  
-        for data, target in train_eval_loader:
-                data, target = data.to(device), target.to(device)
-                output = model(data)
-                train_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
-                pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
-                train_correct += pred.eq(target.view_as(pred)).sum().item()
-                train_num += len(data)
-    train_loss /= train_num
-
-    print('\nFull Training Epoch: Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)'.format(
-        train_loss, train_correct, train_num,
-        100. * train_correct / train_num))
-        
         
     test_loss = 0
     test_correct = 0
@@ -148,7 +157,29 @@ def test(model, device, train_eval_loader, test_loader):
         test_loss, test_correct, test_num,
         100. * test_correct / test_num))
     
+    if len(args)>0:       
+        train_eval_loader = args[0]
+        train_loss = 0
+        train_correct = 0
+        train_num = 0 
+        with torch.no_grad():  
+            for data, target in train_eval_loader:
+                    data, target = data.to(device), target.to(device)
+                    output = model(data)
+                    train_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+                    pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
+                    train_correct += pred.eq(target.view_as(pred)).sum().item()
+                    train_num += len(data)
+        train_loss /= train_num
     
+        print('Full Training Set: Average loss: {:.4f}, Accuracy: {}/{} ({:.2f}%)\n'.format(
+            train_loss, train_correct, train_num,
+            100. * train_correct / train_num))
+        
+        return train_loss, test_loss
+        
+        
+        
 
 def main():
     # Training settings
@@ -160,7 +191,7 @@ def main():
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=14, metavar='N',
+    parser.add_argument('--epochs', type=int, default=1, metavar='N',
                         help='number of epochs to train (default: 14)')
     parser.add_argument('--lr', type=float, default=1.0, metavar='LR',
                         help='learning rate (default: 1.0)')
@@ -172,7 +203,7 @@ def main():
                         help='disables CUDA training')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='random seed (default: 1)')
-    parser.add_argument('--log-interval', type=int, default=10, metavar='N',
+    parser.add_argument('--log-interval', type=int, default=200, metavar='N',
                         help='how many batches to wait before logging training status')
 
     parser.add_argument('--evaluate', action='store_true', default=False,
@@ -194,12 +225,14 @@ def main():
     models = [fcNet, ConvNet, Net]
     model_sel = args.model_number
     
+    version = ''
+    
     # Evaluate on the official test set
     if args.evaluate:
         assert os.path.exists(args.load_model)
-
+        
         # Set the test model
-        model = models[model_sel].to(device)
+        model = models[model_sel]().to(device)
         model.load_state_dict(torch.load(args.load_model))
 
         test_dataset = datasets.MNIST('../MNIST', train=False,
@@ -215,12 +248,18 @@ def main():
 
         return
 
+    # Data augmentation
+    
+    # version = '_augmented'
+    img_trasfomrm = transforms.Compose([
+        # transforms.RandomRotation(10),
+        # transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0),
+        transforms.ToTensor(),
+        transforms.Normalize((0.1307,),(0.3081,))
+        ])
+
     # Pytorch has default MNIST dataloader which loads data at each iteration
-    train_dataset = datasets.MNIST('../MNIST', train=True, download=True,
-                transform=transforms.Compose([       # Data preprocessing
-                    transforms.ToTensor(),           # Add data augmentation here
-                    transforms.Normalize((0.1307,), (0.3081,))
-                ]))
+    train_dataset = datasets.MNIST('../MNIST', train=True, download=True, transform = img_trasfomrm)
 
     # You can assign indices for training/validation or use a random subset for
     # training by using SubsetRandomSampler. Right now the train and validation
@@ -245,8 +284,6 @@ def main():
         subset_indices_train = np.append(subset_indices_train,target_indice[split:])
         subset_indices_valid = np.append(subset_indices_valid,target_indice[:split])
 
-    # subset_indices_train = range(len(train_dataset))
-    # subset_indices_valid = range(len(train_dataset))
     
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size,
@@ -270,16 +307,27 @@ def main():
     # Set your learning rate scheduler
     scheduler = StepLR(optimizer, step_size=args.step, gamma=args.gamma)
 
+    train_losses, test_losses = [],[]
+
     # Training loop
     for epoch in range(1, args.epochs + 1):
         train(args, model, device, train_loader, optimizer, epoch)
-        test(model, device, train_eval_loader, val_loader)
+        
+        if epoch == args.epochs:
+            train_loss, test_loss = test(model, device, val_loader, train_eval_loader)
+        else:
+            train_loss, test_loss = test(model, device, val_loader)
+            
         scheduler.step()    # learning rate scheduler
 
+        train_losses.append(train_loss)
+        test_losses.append(test_loss)
+        
         # You may optionally save your model at each epoch here
 
-    if args.save_model:
-        torch.save(model.state_dict(), "mnist_model.pt")
+    if args.save_model:        
+        torch.save(model.state_dict(), "mnist_model" + model_sel + version + ".pt")      
+        np.save('../results/losses_across_epoche' + model_sel + version + '.npy',[train_losses,test_losses]);
 
 
 if __name__ == '__main__':
