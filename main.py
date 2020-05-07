@@ -87,26 +87,26 @@ class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
         
-        out1, out2, out3 = 8, 8, 16        
-        lin_in = self.calculate_size(28,3)
+        out1, out2 = 8, 16        
+        lin_in = self.calculate_size(28)
         
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=out1, kernel_size=(2,2), stride=2)
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=out1, kernel_size=(2,2), stride=1)
         self.conv2 = nn.Conv2d(out1, out2, 4, 1)
-        self.conv3 = nn.Conv2d(out2, out3, 4, 1)
+        # self.conv3 = nn.Conv2d(out2, out3, 4, 1)
         self.dropout1 = nn.Dropout2d(0.5)
         self.dropout2 = nn.Dropout2d(0.5)
-        self.dropout3 = nn.Dropout2d(0.5)
-        self.fc1 = nn.Linear(out3*lin_in**2, 64)
+        # self.dropout3 = nn.Dropout2d(0.5)
+        self.fc1 = nn.Linear(out2*lin_in**2, 64)
         self.fc2 = nn.Linear(64, 10)
         self.batchnorm1 = nn.BatchNorm2d(out1)
         self.batchnorm2 = nn.BatchNorm2d(out2)
-        self.batchnorm3 = nn.BatchNorm2d(out3)
+        # self.batchnorm3 = nn.BatchNorm2d(out3)
         
         
-    def calculate_size(self, size_in, n_layer):
-        for k in range(n_layer):
-            size_out = np.floor((size_in - 2) / 2)
-            size_in = size_out
+    def calculate_size(self, size_in):
+    
+        size_out = size_in - 2
+        size_out = np.floor((size_out - 2) / 2)
         return int(size_out)
     
     
@@ -120,14 +120,14 @@ class Net(nn.Module):
         x = self.conv2(x)
         x = F.relu(x)
         x = F.max_pool2d(x, 2)
-        x = self.dropout2(x)
+        # x = self.dropout2(x)
         x = self.batchnorm2(x)
 
-        x = self.conv3(x)
-        x = F.relu(x)
-        x = F.max_pool2d(x, 2)
+        # x = self.conv3(x)
+        # x = F.relu(x)
+        # x = F.max_pool2d(x, 2)
         # x = self.dropout3(x)
-        x = self.batchnorm3(x)
+        # x = self.batchnorm3(x)
         
         x = torch.flatten(x, 1)
         x = self.fc1(x)
