@@ -9,14 +9,15 @@ from torch.optim.lr_scheduler import StepLR
 from torch.utils.data.sampler import SubsetRandomSampler
 import numpy as np
 import os
+from learning_curve import myplot
 
 '''
 This code is adapted from two sources:
 (i) The official PyTorch MNIST example (https://github.com/pytorch/examples/blob/master/mnist/main.py)
 (ii) Starter code from Yisong Yue's CS 155 Course (http://www.yisongyue.com/courses/cs155/2020_winter/)
 Run with:
-python main.py --batch-size 32 --epochs 1 --log-interval 100 --model-number 1
-python main.py --evaluate --load-model mnist_model.pt
+python main.py --batch-size 128 --epochs 1 --log-interval 200 --model-number 2 --data-partition 1
+python main.py --evaluate --load-model mnist_model.pt --model-number 2 --data-partition 1
 '''
 
 class fcNet(nn.Module):
@@ -197,7 +198,9 @@ def test(model, device, test_loader, *args):
             train_loss, train_correct, train_num,
             100. * train_correct / train_num))
         
-        return train_loss, test_loss
+        return train_loss, test_loss, train_correct / train_num, test_correct / test_num
+    else:
+        return test_correct / test_num
         
         
         
@@ -226,14 +229,15 @@ def main():
                         help='random seed (default: 1)')
     parser.add_argument('--log-interval', type=int, default=200, metavar='N',
                         help='how many batches to wait before logging training status')
-
     parser.add_argument('--evaluate', action='store_true', default=False,
                         help='evaluate your model on the official test set')
     parser.add_argument('--load-model', type=str,
                         help='model file path')
-
     parser.add_argument('--save-model', action='store_true', default=True,
                         help='For Saving the current Model')
+    parser.add_argument('--data-partition', type=int, default=1, metavar='N',
+                        help='Choose subset of  training set (default: 1)')
+    
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -245,6 +249,8 @@ def main():
 
     models = [fcNet, ConvNet, Net]
     model_sel = args.model_number
+    
+    partition = args.data_partition
     
     version = ''
     
@@ -265,7 +271,8 @@ def main():
         test_loader = torch.utils.data.DataLoader(
             test_dataset, batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
-        test(model, device, test_loader)
+        test_acc = test(model, device, test_loader)
+        np.save('../results/loss_test' + str(model_sel) + version + '_part' + str(partition) + '.npy', test_acc)
 
         return
 
@@ -280,7 +287,7 @@ def main():
         ])
 
     # Pytorch has default MNIST dataloader which loads data at each iteration
-    train_dataset = datasets.MNIST('../MNIST', train=True, download=True, transform = img_trasfomrm)
+    train_dataset = datasets.MNIST('../MNIST', train=True, download=False, transform = img_trasfomrm)
 
     # You can assign indices for training/validation or use a random subset for
     # training by using SubsetRandomSampler. Right now the train and validation
@@ -295,13 +302,15 @@ def main():
     subset_indices_train, subset_indices_valid = [],[]
     
     for k in range(10):
-        target_indice = target_indices[k][0]               
-        
-        split = int(np.floor(val_split * len(target_indice)))
-        
+        target_indice = target_indices[k][0]      
+
         np.random.seed(42)
         np.random.shuffle(target_indice)
         
+        target_indice = target_indice[:int(np.floor(len(target_indice)/partition))]
+        
+        split = int(np.floor(val_split * len(target_indice)))
+                       
         subset_indices_train = np.append(subset_indices_train,target_indice[split:])
         subset_indices_valid = np.append(subset_indices_valid,target_indice[:split])
 
@@ -328,24 +337,27 @@ def main():
     # Set your learning rate scheduler
     scheduler = StepLR(optimizer, step_size=args.step, gamma=args.gamma)
 
-    train_losses, test_losses = [],[]
+    train_losses, val_losses, train_accs, val_accs = [],[],[],[]
 
     # Training loop
     for epoch in range(1, args.epochs + 1):
         train(args, model, device, train_loader, optimizer, epoch)
-        train_loss, test_loss = test(model, device, val_loader, train_eval_loader)
+        train_loss, val_loss, train_acc, val_acc = test(model, device, val_loader, train_eval_loader)
             
         scheduler.step()    # learning rate scheduler
 
         train_losses.append(train_loss)
-        test_losses.append(test_loss)
-        
+        val_losses.append(val_loss)
+        train_accs.append(train_acc)
+        val_accs.append(val_acc)
         # You may optionally save your model at each epoch here
 
     if args.save_model:        
-        torch.save(model.state_dict(), "mnist_model" + str(model_sel) + version + ".pt")      
-        np.save('../results/losses_across_epoche' + str(model_sel) + version + '.npy',[train_losses,test_losses]);
-
+        torch.save(model.state_dict(), 'mnist_model' + str(model_sel) + version  +'_part.pt')
+        
+        learning_curve_filename = '../results/loss_train' + str(model_sel) + version + '_part' + str(partition) + '.npy'
+        np.save(learning_curve_filename, [train_losses,val_losses,train_accs, val_accs])
+        myplot(learning_curve_filename)
 
 if __name__ == '__main__':
     main()
