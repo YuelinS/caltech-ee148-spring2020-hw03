@@ -10,19 +10,6 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
 rfd = 'D:/git/results/'    
-    # [train_losses,val_losses,train_accs, val_accs] = np.load(rfd + file_name)
-    
-    # fig, (plt,ax2) = plt.subplots(1, 2, figsize=(20, 10))  
-    # plt.plot(train_losses,marker=".")
-    # plt.plot(val_losses,marker=".")
-    # plt.grid()
-    # plt.xaxis.set_major_locator(MaxNLocator(integer=True))
-    # plt.set_xlabel('# Epoch')
-    # plt.set_ylabel('Score')
-    # plt.set_title('Loss')
-     
-
-# learning_curve(rfd + 'loss_across_epochs.npy')
 
 
 #%% Evaluation
@@ -30,7 +17,6 @@ rfd = 'D:/git/results/'
 file_names = sorted(os.listdir(rfd)) 
 
 train_accs, test_accs = [], []
-
 parts = [1,2,4,8,16][::-1] 
 
 for partition in parts:
@@ -62,6 +48,47 @@ plt.legend({'Train','Test'})
 
 
 plt.savefig(rfd + 'data_partition.png')
+
+
+#%% Incorrect examples
+
+[imgs,trues,preds] = np.load(rfd + 'incorrect_examples.npy')
+
+fig,axs = plt.subplots(3,3,figsize=(15,15))
+axs = axs.ravel()
+for i in range(9):  
+    axs[i].imshow(np.squeeze(imgs[i]),cmap = 'gray')
+    axs[i].set_title(f'True: {trues[i]}, Pred: {preds[i][0]}')
+    
+plt.savefig(rfd + 'incorrect_examples.png')
+
+
+#%% kernels
+
+# see main.py bottom
+
+
+#%% confusion matrix
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+
+files = np.load(rfd + 'confusion_matrix_data.npz')
+
+trues = files['arr_0'].ravel()
+preds = np.squeeze(files['arr_1']).ravel()
+
+mat = confusion_matrix(trues,preds)
+
+plt.figure(figsize=(20,20))
+disp = ConfusionMatrixDisplay(confusion_matrix=mat,
+                                  display_labels=[str(i) for i in range(10)])
+disp.plot(cmap = 'GnBu',values_format = '.0f')
+plt.savefig(rfd + 'confusion_matrix.png')
+
+
+
+
+
+
 
 
 

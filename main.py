@@ -138,6 +138,7 @@ class Net(nn.Module):
         output = F.log_softmax(x, dim=1)
         return output
 
+#%%
 
 def train(args, model, device, train_loader, optimizer, epoch):
     '''
@@ -164,14 +165,40 @@ def test(model, device, test_loader, *args):
     test_loss = 0
     test_correct = 0
     test_num = 0   
+    n_pick = 10
     with torch.no_grad():   # For the inference step, gradient is not computed
+    
+        # 3. For confusion matrix
+        preds = []
+        trues = []
+    
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
             test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
             pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
-            test_correct += pred.eq(target.view_as(pred)).sum().item()
-            test_num += len(data)
+            # import pdb; pdb.set_trace()
+            
+            # 1.For accessing incorrect examples:
+            # incrt_indices =  (pred.eq(target.view_as(pred))==0).nonzero()
+            # imgs,trues,preds = [],[],[]
+            # for eg in range(n_pick):
+            #     ind = incrt_indices[eg,0]
+            #     imgs.append(data[ind].cpu().numpy())
+            #     trues.append(target[ind].cpu().numpy())
+            #     preds.append(pred[ind].cpu().numpy())                
+            # np.save('../results/incorrect_examples.npy',[imgs,trues,preds])
+            # return
+        
+            trues.append(target.cpu().numpy())
+            preds.append(pred.cpu().numpy())  
+        
+        np.savez('../results/confusion_matrix_data.npz',trues,preds)
+        return
+        
+        
+            # test_correct += pred.eq(target.view_as(pred)).sum().item()
+            # test_num += len(data)
 
     test_loss /= test_num
 
@@ -272,7 +299,8 @@ def main():
             test_dataset, batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
         test_acc = test(model, device, test_loader)
-        np.save('../results/loss_test' + str(model_sel) + version + '_part' + str(partition) + '.npy', test_acc)
+        # For ploting partition - test:
+        # np.save('../results/loss_test' + str(model_sel) + version + '_part' + str(partition) + '.npy', test_acc)
 
         return
 
@@ -350,14 +378,42 @@ def main():
         val_losses.append(val_loss)
         train_accs.append(train_acc)
         val_accs.append(val_acc)
-        # You may optionally save your model at each epoch here
 
     if args.save_model:        
-        torch.save(model.state_dict(), 'mnist_model' + str(model_sel) + version  +'_part.pt')
+        torch.save(model.state_dict(), 'mnist_model' + str(model_sel) + version  +'.pt')
+        np.save('../results/loss_train' + str(model_sel) + version + '.npy', [train_losses,val_losses,train_accs, val_accs])
         
-        learning_curve_filename = '../results/loss_train' + str(model_sel) + version + '_part' + str(partition) + '.npy'
-        np.save(learning_curve_filename, [train_losses,val_losses,train_accs, val_accs])
-        myplot(learning_curve_filename)
+        # For ploting partition - train:
+        # torch.save(model.state_dict(), 'mnist_model' + str(model_sel) + version  + '_part.pt')
+        # learning_curve_filename = '../results/loss_train' + str(model_sel) + version + '_part' + str(partition) + '.npy'
+        # np.save(learning_curve_filename, [train_losses,val_losses,train_accs, val_accs])
+        # myplot(learning_curve_filename)
 
 if __name__ == '__main__':
     main()
+
+#%% 2. Kernels visualization
+# rfd = 'D:/git/results/'    
+# import matplotlib.pyplot as plt
+
+
+# model = Net()
+# model.load_state_dict(torch.load('./mnist_model2.pt'))
+# c1w = model.state_dict()['conv1.weight'].numpy()
+
+# fig,axs = plt.subplots(3,3,figsize=(15,15))
+# axs = axs.ravel()
+# for i in range(8):  
+#     axs[i].imshow(np.squeeze(c1w[i,0]),cmap = 'gray')
+#     # axs[i].set_title(f'True: {trues[i]}, Pred: {preds[i][0]}')
+    
+# plt.savefig(rfd + 'kernels.png')
+
+
+
+
+
+
+
+
+
