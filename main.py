@@ -175,23 +175,25 @@ def test(model, device, test_loader, *args):
         # preds = []
         # trues = []   
         # features = []
-        with open("../results/8neighbors_pos.txt", "rb") as fp:   # Unpickling
-            ims_pos = pickle.load(fp)
-        ims_array = np.zeros((5,9,28,28))
+        
+        # 4. For 8 neighbors
+        # with open("../results/8neighbors_pos.txt", "rb") as fp:   # Unpickling
+        #     ims_pos = pickle.load(fp)
+        # ims_array = np.zeros((5,9,28,28))
         
         for ibatch, (data, target) in enumerate(test_loader):
-            # data, target = data.to(device), target.to(device)
+            data, target = data.to(device), target.to(device)
             
-            inds = [[n,ims_pos.index(m),m.index(n)] for m in ims_pos for n in m if n[0]==ibatch]
-            for k in inds:
-                ims_array[k[1],k[2]] = data[k[0][1]]
+            # inds = [[n,ims_pos.index(m),m.index(n)] for m in ims_pos for n in m if n[0]==ibatch]
+            # for k in inds:
+            #     ims_array[k[1],k[2]] = data[k[0][1]]
             
-            np.save('../results/8neighbors_img',ims_array)
+            # np.save('../results/8neighbors_img',ims_array)
 
 
-            # output, feature = model(data)
-            # test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
-            # pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
+            output, feature = model(data)
+            test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+            pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
             # import pdb; pdb.set_trace()
             
             # 1.For accessing incorrect examples:
@@ -214,11 +216,11 @@ def test(model, device, test_loader, *args):
             
         # np.savez('../results/feature_data',features,trues)
        
-        return
+        # return
         
         
-            # test_correct += pred.eq(target.view_as(pred)).sum().item()
-            # test_num += len(data)
+            test_correct += pred.eq(target.view_as(pred)).sum().item()
+            test_num += len(data)
 
     test_loss /= test_num
 
@@ -411,6 +413,8 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
 
 #%% 2. Kernels visualization
 # rfd = 'D:/git/results/'    
