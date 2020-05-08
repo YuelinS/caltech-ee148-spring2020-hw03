@@ -10,6 +10,7 @@ from torch.utils.data.sampler import SubsetRandomSampler
 import numpy as np
 import os
 from learning_curve import myplot
+import pickle
 
 '''
 This code is adapted from two sources:
@@ -133,10 +134,12 @@ class Net(nn.Module):
         x = torch.flatten(x, 1)
         x = self.fc1(x)
         x = F.relu(x)
+        # 4. Visualize feature
+        feature = x
         x = self.fc2(x)
 
         output = F.log_softmax(x, dim=1)
-        return output
+        return output, feature
 
 #%%
 
@@ -165,18 +168,30 @@ def test(model, device, test_loader, *args):
     test_loss = 0
     test_correct = 0
     test_num = 0   
-    n_pick = 10
+    # n_pick = 10
     with torch.no_grad():   # For the inference step, gradient is not computed
     
         # 3. For confusion matrix
-        preds = []
-        trues = []
-    
-        for data, target in test_loader:
-            data, target = data.to(device), target.to(device)
-            output = model(data)
-            test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
-            pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
+        # preds = []
+        # trues = []   
+        # features = []
+        with open("../results/8neighbors_pos.txt", "rb") as fp:   # Unpickling
+            ims_pos = pickle.load(fp)
+        ims_array = np.zeros((5,9,28,28))
+        
+        for ibatch, (data, target) in enumerate(test_loader):
+            # data, target = data.to(device), target.to(device)
+            
+            inds = [[n,ims_pos.index(m),m.index(n)] for m in ims_pos for n in m if n[0]==ibatch]
+            for k in inds:
+                ims_array[k[1],k[2]] = data[k[0][1]]
+            
+            np.save('../results/8neighbors_img',ims_array)
+
+
+            # output, feature = model(data)
+            # test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+            # pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
             # import pdb; pdb.set_trace()
             
             # 1.For accessing incorrect examples:
@@ -190,10 +205,15 @@ def test(model, device, test_loader, *args):
             # np.save('../results/incorrect_examples.npy',[imgs,trues,preds])
             # return
         
-            trues.append(target.cpu().numpy())
-            preds.append(pred.cpu().numpy())  
+        #     trues.append(target.cpu().numpy())
+        #     preds.append(pred.cpu().numpy())          
+        # np.savez('../results/confusion_matrix_data.npz',trues,preds)
         
-        np.savez('../results/confusion_matrix_data.npz',trues,preds)
+        #     features.append(feature.cpu().numpy())
+        #     trues.append(target.cpu().numpy())    
+            
+        # np.savez('../results/feature_data',features,trues)
+       
         return
         
         

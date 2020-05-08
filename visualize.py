@@ -85,11 +85,65 @@ disp.plot(cmap = 'GnBu',values_format = '.0f')
 plt.savefig(rfd + 'confusion_matrix.png')
 
 
+#%% feature
+from sklearn.manifold import TSNE
+
+files = np.load(rfd + 'feature_data.npz')
+
+features = files['arr_0']
+labels = files['arr_1'].ravel()
+
+## t-SNE
+feat = features.reshape(-1,64)
+X_embedded = TSNE(n_components=2).fit_transform(feat)
+
+color = np.array([[230, 25, 75], [60, 180, 75], [255, 225, 25],[0, 130, 200], [245, 130, 48], [230, 190, 255],
+                  [170, 110, 40], [255, 250, 200], [210, 245, 60], [250, 190, 190]])
+
+fig, ax = plt.subplots()
+for digit in range(10):
+
+    x = X_embedded[labels==digit,0]
+    y = X_embedded[labels==digit,1] 
+    ax.scatter(x, y, alpha=0.8, c=tuple(color[digit]/255), edgecolors='none', s=5,label=digit) #,cmap = 'winter') #, 
+
+plt.legend()
+plt.savefig(rfd + 't-SNE.png')
+
+
+#%% 8neighbors
+from scipy.spatial.distance import euclidean as euclidian
+import pickle
+
+ims_pos = []
+
+for k in range(5):
+    
+    x0 = feat[k]
+    ds = [euclidian(x0, xi) for xi in feat]
+    d9 = sorted(ds)[:9]
+    p9 = [ds.index(d) for d in d9]
+    
+    im_pos = [[p//1000,p%1000] for p in p9]
+    ims_pos.append(im_pos)
+
+# np.save('8neighbors_pos',ims_pos)
+with open(rfd+"8neighbors_pos.txt", "wb") as fp:   #Pickling
+   pickle.dump(ims_pos, fp)
 
 
 
 
+## images
+imgs = np.load(rfd+'8neighbors_img.npy')
 
+fig,axs = plt.subplots(5,9,figsize=(25,15))
 
+for i in range(5): 
+    for j in range(9):
+        
+        axs[i,j].imshow(np.squeeze(imgs[i,j]),cmap = 'gray')
+    
+plt.savefig(rfd + '8neighbors_grid.png')
 
 
